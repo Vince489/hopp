@@ -10,83 +10,53 @@ startButton.addEventListener('click', start);
 stopButton.addEventListener('click', stop);
 
 async function start() {
-  try {
-      startButton.disabled = true;
-      stopButton.disabled = false;
-      
-      // Get user media
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      
-      // Display local stream
-      const audioElement = new Audio();
-      audioElement.srcObject = localStream;
-      audioElement.play();
-      
-      // Create peer connection
-      peerConnection = new RTCPeerConnection();
-      localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+    try {
+        startButton.disabled = true;
+        stopButton.disabled = false;
 
-      // Listen for ICE candidates
-      peerConnection.addEventListener('icecandidate', event => {
-          if (event.candidate) {
-              socket.emit('candidate', event.candidate);
-          }
-      });
+        // Get user media
+        localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
 
-      // Listen for remote tracks
-      peerConnection.addEventListener('track', event => {
-          const remoteAudio = document.createElement('audio');
-          remoteAudio.srcObject = new MediaStream([event.track]);
-          remoteAudio.play();
-          document.body.appendChild(remoteAudio);
-      });
+        // Create peer connection
+        peerConnection = new RTCPeerConnection();
+        localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
 
-      // Create offer
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(new RTCSessionDescription(offer));
-      
-      // Send offer to peer
-      socket.emit('offer', offer);
-  } catch (error) {
-      console.error('Error starting:', error);
-  }
+        // Listen for ICE candidates
+        peerConnection.addEventListener('icecandidate', event => {
+            if (event.candidate) {
+                socket.emit('candidate', event.candidate);
+            }
+        });
+
+        // Listen for remote tracks
+        peerConnection.addEventListener('track', event => {
+            const remoteAudio = document.getElementById('remoteAudio');
+            if (!remoteAudio.srcObject) {
+                remoteAudio.srcObject = new MediaStream();
+            }
+            remoteAudio.srcObject.addTrack(event.track);
+        });
+
+        // Create offer
+        const offer = await peerConnection.createOffer();
+        await peerConnection.setLocalDescription(offer);
+
+        // Send offer to peer
+        socket.emit('offer', offer);
+    } catch (error) {
+        console.error('Error starting:', error);
+    }
 }
 
 function stop() {
-  startButton.disabled = false;
-  stopButton.disabled = true;
+    startButton.disabled = false;
+    stopButton.disabled = true;
 
-  // Stop local stream
-  localStream.getTracks().forEach(track => track.stop());
+    // Stop local stream
+    localStream.getTracks().forEach(track => track.stop());
 
-  // Close peer connection
-  peerConnection.close();
-
-  // Reset peer connection
-  peerConnection = null;
+    // Close peer connection
+    if (peerConnection) {
+        peerConnection.close();
+    }
 }
-
-// Handle 'offer' event
-socket.on('offer', async (offer) => {
-  if (!peerConnection) {
-      start(); // Start the connection if it's not already started
-  }
-  await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-  const answer = await peerConnection.createAnswer();
-  await peerConnection.setLocalDescription(new RTCSessionDescription(answer));
-  socket.emit('answer', answer);
-});
-
-// Handle 'answer' event
-socket.on('answer', (answer) => {
-  if (peerConnection) {
-      peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
-  }
-});
-
-// Handle 'candidate' event
-socket.on('candidate', (candidate) => {
-  if (peerConnection) {
-      peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
-  }
-});
